@@ -1,0 +1,35 @@
+name: Logs SFO
+on:
+  workflow_dispatch:
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Unikraft CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl
+          sudo install -d -m 0755 /etc/apt/keyrings
+          sudo curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+            -o /etc/apt/keyrings/unikraft-cli.gpg \
+            https://pkg.unikraft.com/debian/cli-apt/keys/cli-apt.gpg
+          sudo tee /etc/apt/sources.list.d/unikraft-cli.sources >/dev/null <<EOFS
+          Types: deb
+          URIs: https://pkg.unikraft.com/debian/cli-apt/
+          Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+          Components: stable
+          Signed-By: /etc/apt/keyrings/unikraft-cli.gpg
+          EOFS
+          sudo apt-get update
+          sudo apt-get install -y unikraft-cli
+      - name: Login
+        run: echo "$UNIKRAFT_TOKEN" | unikraft login --token -
+        env:
+          UNIKRAFT_TOKEN: ${{ secrets.UNIKRAFT_TOKEN }}
+      - name: Instance status + logs
+        run: |
+          set -uo pipefail
+          echo "=== list ==="; unikraft instances list || true
+          echo "=== logs unikraft-954wl ==="; timeout 30 unikraft instances logs unikraft-954wl 2>&1 | tail -30 || true
+          echo "=== logs unikraft-qgoar ==="; timeout 30 unikraft instances logs unikraft-qgoar 2>&1 | tail -30 || true
