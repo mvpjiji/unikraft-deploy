@@ -28,9 +28,12 @@ jobs:
         run: echo "$UNIKRAFT_TOKEN" | unikraft login --token -
         env:
           UNIKRAFT_TOKEN: ${{ secrets.UNIKRAFT_TOKEN }}
+      - name: Help
+        run: unikraft instances start --help; echo ---; unikraft instances --help
       - name: Start instance
         run: |
           set -euo pipefail
-          unikraft instances start --metro sfo unikraft-954wl
+          unikraft instances start unikraft-954wl || unikraft instances start --metro sfo unikraft-954wl
           sleep 8
-          unikraft instances list --metro sfo
+          echo "=== sfo instances ==="
+          unikraft instances list || true
