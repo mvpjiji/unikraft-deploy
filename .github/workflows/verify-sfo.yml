@@ -1,0 +1,52 @@
+name: Verify SFO Node
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        description: 节点域名
+        required: true
+        default: restless-wind-97v1th4m.sfo.unikraft.app
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install xray
+        run: |
+          set -euo pipefail
+          V=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep -oE '"tag_name": "[^"]*"' | cut -d'"' -f4)
+          curl -sL --max-time 120 -o xray.zip "https://github.com/XTLS/Xray-core/releases/download/${V}/Xray-linux-64.zip"
+          unzip -q xray.zip xray && chmod +x xray && ./xray version | head -2
+      - name: Build client config
+        run: |
+          HOST="${{ inputs.host }}"
+          UUID="$UUID_SECRET"
+          jq -n --arg h "$HOST" --arg u "$UUID" '{
+            log:{loglevel:"warning"},
+            inbounds:[{tag:"socks",port:10899,listen:"127.0.0.1",protocol:"socks",settings:{udp:false}}],
+            outbounds:[{protocol:"vless",settings:{vnext:[{address:$h,port:443,users:[{id:$u,encryption:"none",flow:""}]}]},
+              streamSettings:{network:"ws",security:"tls",
+                tlsSettings:{serverName:$h,fingerprint:"chrome"},
+                wsSettings:{path:"/",host:$h}}}]}' > client.json
+          cat client.json
+        env:
+          UUID_SECRET: ${{ secrets.UUID }}
+        # secrets can't go into run via $(cat); regenerate:
+      - name: Fix uuid
+        run: |
+          jq --arg u "$GITHUB_SECRET_UUID" '.outbounds[0].settings.vnext[0].users[0].id = $u' client.json > client2.json
+          mv client2.json client.json
+      - name: Run verification
+        run: |
+          set -euo pipefail
+          ./xray run -c client.json &
+          XPID=$!
+          sleep 5
+          echo "=== generate_204 ==="
+          curl -s --socks5-hostname 127.0.0.1:10899 -o /dev/null -w "%{http_code}\n" --max-time 30 https://www.gstatic.com/generate_204
+          echo "=== exit ip ==="
+          curl -s --socks5-hostname 127.0.0.1:10899 --max-time 30 https://api.ipify.org; echo
+          echo "=== geo ==="
+          curl -s --socks5-hostname 127.0.0.1:10899 --max-time 30 "http://ip-api.com/json/?fields=query,country,regionName,city,isp,as"; echo
+          kill $XPID
+        env:
+          GITHUB_SECRET_UUID: ${{ secrets.UUID }}
