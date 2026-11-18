@@ -1,0 +1,36 @@
+name: Start SFO Instance
+on:
+  workflow_dispatch:
+jobs:
+  start:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Unikraft CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl jq
+          sudo install -d -m 0755 /etc/apt/keyrings
+          sudo curl -fsSL --retry 5 --retry-all-errors --retry-delay 2 \
+            -o /etc/apt/keyrings/unikraft-cli.gpg \
+            https://pkg.unikraft.com/debian/cli-apt/keys/cli-apt.gpg
+          sudo tee /etc/apt/sources.list.d/unikraft-cli.sources >/dev/null <<EOFS
+          Types: deb
+          URIs: https://pkg.unikraft.com/debian/cli-apt/
+          Suites: $(. /etc/os-release && echo "$VERSION_CODENAME")
+          Components: stable
+          Signed-By: /etc/apt/keyrings/unikraft-cli.gpg
+          EOFS
+          sudo apt-get update
+          sudo apt-get install -y unikraft-cli
+          unikraft version
+      - name: Login
+        run: echo "$UNIKRAFT_TOKEN" | unikraft login --token -
+        env:
+          UNIKRAFT_TOKEN: ${{ secrets.UNIKRAFT_TOKEN }}
+      - name: Start instance
+        run: |
+          set -euo pipefail
+          unikraft instances start --metro sfo unikraft-954wl
+          sleep 8
+          unikraft instances list --metro sfo
