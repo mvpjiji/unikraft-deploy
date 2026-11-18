@@ -17,9 +17,11 @@ jobs:
           curl -sL --max-time 120 -o xray.zip "https://github.com/XTLS/Xray-core/releases/download/${V}/Xray-linux-64.zip"
           unzip -q xray.zip xray && chmod +x xray && ./xray version | head -2
       - name: Build client config
+        env:
+          UUID: ${{ secrets.UUID }}
+          HOST: ${{ inputs.host }}
         run: |
-          HOST="${{ inputs.host }}"
-          UUID="$UUID_SECRET"
+          set -euo pipefail
           jq -n --arg h "$HOST" --arg u "$UUID" '{
             log:{loglevel:"warning"},
             inbounds:[{tag:"socks",port:10899,listen:"127.0.0.1",protocol:"socks",settings:{udp:false}}],
@@ -27,14 +29,6 @@ jobs:
               streamSettings:{network:"ws",security:"tls",
                 tlsSettings:{serverName:$h,fingerprint:"chrome"},
                 wsSettings:{path:"/",host:$h}}}]}' > client.json
-          cat client.json
-        env:
-          UUID_SECRET: ${{ secrets.UUID }}
-        # secrets can't go into run via $(cat); regenerate:
-      - name: Fix uuid
-        run: |
-          jq --arg u "$GITHUB_SECRET_UUID" '.outbounds[0].settings.vnext[0].users[0].id = $u' client.json > client2.json
-          mv client2.json client.json
       - name: Run verification
         run: |
           set -euo pipefail
@@ -42,11 +36,11 @@ jobs:
           XPID=$!
           sleep 5
           echo "=== generate_204 ==="
-          curl -s --socks5-hostname 127.0.0.1:10899 -o /dev/null -w "%{http_code}\n" --max-time 30 https://www.gstatic.com/generate_204
+          code=$(curl -s --socks5-hostname 127.0.0.1:10899 -o /dev/null -w "%{http_code}" --max-time 30 https://www.gstatic.com/generate_204)
+          echo "code=$code"
+          [ "$code" = "204" ] || exit 1
           echo "=== exit ip ==="
           curl -s --socks5-hostname 127.0.0.1:10899 --max-time 30 https://api.ipify.org; echo
           echo "=== geo ==="
           curl -s --socks5-hostname 127.0.0.1:10899 --max-time 30 "http://ip-api.com/json/?fields=query,country,regionName,city,isp,as"; echo
           kill $XPID
-        env:
-          GITHUB_SECRET_UUID: ${{ secrets.UUID }}
